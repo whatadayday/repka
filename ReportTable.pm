@@ -22,7 +22,7 @@ my $NUM_ROWS_TRY_TO_XML_SAVE = 10;
 my $MAX_BYTES_TO_XML_SAVE = 1024 * 16; 
 
 # aim: construct ReportTable object
-# params: 
+# params:
 # parse table_node
 # data_node could be undef
 # db_report is Storable class for bm_report_table table
@@ -40,7 +40,7 @@ sub new {
 	# Note: inner tables are possible
 	# So element of fields can also be ref array for fields
 
-    # id => table_id,
+    	# id => table_id,
 	# is_inner_tables => [0|1],
 	
 	my $self = bless { 
@@ -55,7 +55,7 @@ sub new {
 	$class || ref $class;
 
 	# array of table fields
-    # fields => [ name_col1, name_col2, [ name_col3, fields_ref1 ],, [ name_col4, fields_ref2 ] ..., name_col100 ],
+	# fields => [ name_col1, name_col2, [ name_col3, fields_ref1 ],, [ name_col4, fields_ref2 ] ..., name_col100 ],
 	$self->{fields} = $self->_get_fields_from_table_node( $tbl_node); 
 	
 	throw BM::TemplateException( "No fields defined at <table> element ". $tbl_node->line_number())
