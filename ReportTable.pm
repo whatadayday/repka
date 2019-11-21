@@ -78,7 +78,7 @@ sub _get_fields_from_table_node {
 
 	throw BM::TemplateException( "Not found any child node at <". $table_node->nodeName(). "> element ". $table_node->line_number())
     	unless $table_node->hasChildNodes;
-    
+
     my $fields = [];
 	foreach my $column_node ( $table_node->childNodes) {
 		if ( $column_node->nodeName eq 'column') {
@@ -297,11 +297,11 @@ sub _get_data_node {
 	my $fields = shift || $self->fields();
 	my $data = shift || $self->{data} || [];
 	my $tab_shift = shift || "";
-	
+
 	my $data_node = new XML::LibXML::Element( 'data');
     $data_node->setAttribute( 'id', $id );
     $data_node->setAttribute( 'rows', scalar @$data );
-    
+
    	foreach my $row ( @$data) {
    		my $row_node = new XML::LibXML::Element( 'row');
 		foreach my $field ( @$fields) {
