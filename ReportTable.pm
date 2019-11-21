@@ -76,10 +76,10 @@ sub _get_fields_from_table_node {
 	my $self = shift;	
 	my $table_node = shift;
 
-	throw BM::TemplateException( "Not found any child node at <". $table_node->nodeName(). "> element ". $table_node->line_number())
-    	unless $table_node->hasChildNodes;
+	throw BM::TemplateException( "Not found any child node at <". $table_node->nodeName(). "> element ". $table_node->line_number())	
+	unless $table_node->hasChildNodes;
 
-    my $fields = [];
+	my $fields = [];
 	foreach my $column_node ( $table_node->childNodes) {
 		if ( $column_node->nodeName eq 'column') {
 			throw BM::TemplateException( "Not found id attribute at <". $column_node->nodeName. "> element ". $column_node->line_number())
@@ -299,8 +299,8 @@ sub _get_data_node {
 	my $tab_shift = shift || "";
 
 	my $data_node = new XML::LibXML::Element( 'data');
-    $data_node->setAttribute( 'id', $id );
-    $data_node->setAttribute( 'rows', scalar @$data );
+	$data_node->setAttribute( 'id', $id );
+	$data_node->setAttribute( 'rows', scalar @$data );
 
    	foreach my $row ( @$data) {
    		my $row_node = new XML::LibXML::Element( 'row');
@@ -343,9 +343,9 @@ sub save_data_to_db {
 	$self->{stored_at_db} = $self->{db_report}->save_table_data( $self);
 
 	my $data_node = new XML::LibXML::Element( 'data');
-    $data_node->setAttribute( 'id', $self->id());
-    $data_node->setAttribute( 'stored_at_db', $self->{stored_at_db});
-    $data_node->setAttribute( 'rows', scalar @{ $self->data()});
+	$data_node->setAttribute( 'id', $self->id());
+	$data_node->setAttribute( 'stored_at_db', $self->{stored_at_db});
+	$data_node->setAttribute( 'rows', scalar @{ $self->data()});
 
 	return $data_node;	
 }
