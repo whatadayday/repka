@@ -247,8 +247,8 @@ sub save_data {
 		barf "No data to save at table '".$self->id()."'";
 	
 		my $data_node = new XML::LibXML::Element( 'data');
-	    $data_node->setAttribute( 'id', $self->id());
-	    $data_node->setAttribute( 'rows', 0);
+	    	$data_node->setAttribute( 'id', $self->id());
+	    	$data_node->setAttribute( 'rows', 0);
 
 		return $data_node;
 	}
