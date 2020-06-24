@@ -41,7 +41,7 @@ my $tokenKey = get_token();
 get '/images/:id/' => sub {
     my $id = route_parameters->{'id'};
 
-    if ( $cacheImg->exists_and_is_expired( $id)) {
+    if ( ! $cacheImg->get('META') || $cacheImg->exists_and_is_expired( $id)) {
         
         cacher_log('Cache is expired');
         
@@ -195,7 +195,7 @@ sub cacher_log {
     my $msg = shift;
     
     my $datestr = strftime("%a %b %e %H:%M:%S %Y", gmtime);
-    print $datestr. ' : ' . $msg;
+    print $datestr. ' : ' . $msg . "\n";
 }
 
 1;
