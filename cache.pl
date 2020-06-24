@@ -37,7 +37,7 @@ my $tokenKey = get_token();
 get '/images/:id/' => sub {
     my $id = route_parameters->{'id'};
 
-    if ( ! $cacheImg->get('META') || $cacheImg->exists_and_is_expired( $id)) {
+    if ( $cacheImg->exists_and_is_expired('META') || $cacheImg->exists_and_is_expired( $id)) {
         
         cacher_log('Cache is expired');
         
@@ -113,6 +113,14 @@ sub loadData2Cache {
     my $respImg;
     my @metaDataArr;
     
+    # already updating
+    if ($cacheImg->get('__updating')) {
+        return 1;
+    }
+    
+    # set flag
+    $cacheImg->set('__updating', 1);
+    
     my $page = 0;
     my $has_more = 1;
 
@@ -154,9 +162,13 @@ sub loadData2Cache {
         $page++;
         $has_more = $respImg->{hasMore};
     }
-
+    
+    # put meta data to cash
     my %metaDataHash = map { $_->{id} => $_ } @metaDataArr;
     $cacheImg->set( 'META', \%metaDataHash, $CACHE_TERM );
+
+    # unset flag
+    $cacheImg->set('__updating', 0);
 
     cacher_log( scalar @metaDataArr. ' images cached...');
 
