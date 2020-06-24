@@ -15,7 +15,7 @@ use Data::Dumper;
 # Consts
 my $API_KEY = '23567b218376f79d9415';
 
-my $CACHE_PATH = '/Users/dzierzynski/Cache';
+my $CACHE_PATH = '/Cache';
 my $CACHE_TERM = '5 minutes';
 
 # Initializing object
