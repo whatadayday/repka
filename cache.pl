@@ -23,9 +23,6 @@ my $CACHE_TERM = '5 minutes';
 my $client = REST::Client->new();
 $client->setHost('http://interview.agileengine.com');
 
-my $clientLocal = REST::Client->new();
-$clientLocal->setHost('http://localhost:3000');
-
 my $json = JSON::XS->new->allow_nonref->convert_blessed(1);
 
 # create cache
