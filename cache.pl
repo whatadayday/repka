@@ -49,7 +49,7 @@ get '/images/:id/' => sub {
         my $pid = fork();
         die "Failed to fork: $!" unless defined $pid;
         
-        # Return image directly from server
+        # Fetch image directly from server
         if ( $pid) {
             while (1) {
                 $client->GET('/images/'. $id, {Authorization => 'Bearer '. $tokenKey});
