@@ -18,8 +18,7 @@ my $API_KEY = '23567b218376f79d9415';
 my $CACHE_PATH = '/Cache';
 my $CACHE_TERM = '5 minutes';
 
-# Initializing object
-
+# Initializing objects
 my $client = REST::Client->new();
 $client->setHost('http://interview.agileengine.com');
 
