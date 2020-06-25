@@ -8,15 +8,16 @@ use REST::Client;
 use JSON::XS;
 use CHI;
 use Dancer2;
-use POSIX qw(strftime);
+use POSIX;
+use File::stat;
 
 use Data::Dumper;
 
 # Consts
 my $API_KEY = '23567b218376f79d9415';
 
-my $CACHE_PATH = '/Cache';
-my $CACHE_TERM = '5 minutes';
+my $CACHE_PATH = '/tmp/cache';
+my $CACHE_TERM = '5 seconds';
 
 # Initializing objects
 my $client = REST::Client->new();
@@ -25,10 +26,14 @@ $client->setHost('http://interview.agileengine.com');
 my $json = JSON::XS->new->allow_nonref->convert_blessed(1);
 
 # create cache
-my $cacheImg = CHI->new(
-    driver   => 'File', 
-    root_dir => $CACHE_PATH,
-);
+if( ! -w $CACHE_PATH) {
+    cacher_log( $CACHE_PATH . ' can\'t be open to write...');
+    exit 1;
+}
+my $cacheImg = CHI->new( driver   => 'File', root_dir => $CACHE_PATH);
+
+# unset flag
+$cacheImg->set('__updating', 0);
 
 # auth
 my $tokenKey = get_token();
@@ -36,37 +41,43 @@ my $tokenKey = get_token();
 # Server handlers 
 get '/images/:id/' => sub {
     my $id = route_parameters->{'id'};
+    
+    if ( !$cacheImg->get_object( $id) || $cacheImg->exists_and_is_expired( $id)) {
+    #if ( !$cacheImg->get('META') || $cacheImg->exists_and_is_expired( $id)) {
 
-    if ( $cacheImg->exists_and_is_expired('META') || $cacheImg->exists_and_is_expired( $id)) {
+        cacher_log( $id . ' not found or cache is expired');
         
-        cacher_log('Cache is expired');
-        
-        # Forking to not wait cache update
-        my $pid = fork();
-        die "Failed to fork: $!" unless defined $pid;
-        
-        # Fetch image directly from server
-        if ( $pid) {
-            while (1) {
-                $client->GET('/images/'. $id, {Authorization => 'Bearer '. $tokenKey});
-                my $respMeta = $json->decode( $client->responseContent() );
+        if ( $cacheImg->get('__updating')) {
+            cacher_log( '...cache already updating');
+
+            my $imgData = fetch_img( $id);
+            # status => 'not found' is caching as well
+            $cacheImg->set( $id, $imgData, $CACHE_TERM);
             
-                unless (check_auth($respMeta)) {
-                    $tokenKey = get_token();
-                    next;
-                }
-
-                # update cach via GET to no wait the response
-                # $clientLocal->POST('/updatecache/');
-                return $json->encode( $respMeta);
-            }
+            return $json->encode( $imgData->{meta});
         }
         
+        # Forking to not wait cache update
+        my $child = fork();
+        die "Failed to fork: $!" unless defined $child;
+        
+        # Fetch image directly from server
+        unless ( $child) {
+            cacher_log( 'fork to complete request');
+            cacher_log( $id . ' fetched from server');
+            
+            my $imgData = fetch_img( $id);
+            # status => 'not found' is caching as well
+            $cacheImg->set( $id, $imgData, $CACHE_TERM);
+            return $json->encode( $imgData->{meta});
+        }
+
         # Updating cache
         return loadData2Cache();
     }
-
-    return $json->encode( $cacheImg->get('META')->{$id});
+    
+    cacher_log( $id . ' exists in cache and not expired');
+    return $json->encode( $cacheImg->get($id)->{meta});
 };
  
 get '/search/:attr/:val/' => sub {
@@ -74,7 +85,9 @@ get '/search/:attr/:val/' => sub {
     my $val = route_parameters->{'val'};
 
     if ( $cacheImg->exists_and_is_expired('META')) {
-        loadData2Cache();
+        while( !loadData2Cache()) {
+            sleep 3;
+        }
     }
     
     my $metaRef = $cacheImg->get('META');
@@ -84,7 +97,8 @@ get '/search/:attr/:val/' => sub {
             return "Unknown meta field $attr";
         }
         
-        if ( $metaRef->{$id}->{$attr} eq $val ) {
+        # non case-sensitive comparison 
+        if (lc $metaRef->{$id}->{$attr} eq lc $val ) {
             push @res, $metaRef->{$id}; 
         }
     }
@@ -104,27 +118,29 @@ start;
 
 # aim: Updating cache
 # params: no
-# Cache struct:
-# id2 => binary_image
-# id2 => ...,
-# META => { id1 => { author => ... , camera => ... }, id2 => { ... } }
-# return: 1
+# Cache struct: id1 => { meta => { author => ... , camera => ... , }, binary => ..., }, id2 => {...},
+# return:
+# 1 success
+# 0 cache updating by another process
 sub loadData2Cache {
     my $respImg;
     my @metaDataArr;
     
     # already updating
     if ($cacheImg->get('__updating')) {
-        return 1;
+        cacher_log('Already updating');
+        return 0;
     }
     
     # set flag
     $cacheImg->set('__updating', 1);
     
+    cacher_log('Caching started...');
+    
     my $page = 0;
     my $has_more = 1;
 
-    while ($has_more) {
+    while ($has_more && $page < 4) {
         $client->GET("/images?page=$page", {Authorization => 'Bearer '. $tokenKey});
         $respImg = $json->decode( $client->responseContent() );
 
@@ -138,25 +154,13 @@ sub loadData2Cache {
         }
 
         foreach my $pic (@{ $respImg->{pictures}}) {
-            # remove domain name
-            $pic->{cropped_picture} =~ s/http:\/\/.+?\///;
-            
-            $client->GET( $pic->{cropped_picture}, { 'Content-type' => 'image'});
-            $cacheImg->set( $pic->{id},  $client->responseContent(), $CACHE_TERM );
+            my $imgData = {
+                meta   => fetch_img_meta( $pic->{id}),
+                binary => fetch_img_binary( $pic->{cropped_picture}),
+            };
+            $cacheImg->set( $pic->{id}, $imgData, $CACHE_TERM );
 
-            my $respMeta;
-            while (1) {
-                $client->GET('/images/'. $pic->{id}, {Authorization => 'Bearer '. $tokenKey});
-                $respMeta = $json->decode( $client->responseContent() );
-            
-                unless (check_auth($respMeta)) {
-                    $tokenKey = get_token();
-                    next;
-                }
-                last;
-            }
-
-            push @metaDataArr, $respMeta;
+            push @metaDataArr, $imgData->{meta};
         }
 
         $page++;
@@ -173,6 +177,62 @@ sub loadData2Cache {
     cacher_log( scalar @metaDataArr. ' images cached...');
 
     return 1;
+}
+
+# aim: fetch img data from server
+# params: id
+# return: ref to hash {
+#   meta   => ,
+#   binary => ,
+# }
+sub fetch_img {
+    my $id = shift;
+
+    my $imgData = {
+        meta   => fetch_img_meta($id),
+    };
+    
+    if ($imgData->{meta}->{cropped_picture}) {
+        $imgData->{binary} = fetch_img_binary( $imgData->{meta}->{cropped_picture});
+    }
+    else {
+        cacher_log( $id . ' image not found');
+    }
+    
+    return $imgData;
+}
+
+# aim: fetch img meta data from server
+# params: id
+# return: ref to hash
+sub fetch_img_meta {
+    my $id = shift;
+    
+    while (1) {
+        $client->GET('/images/'. $id, {Authorization => 'Bearer '. $tokenKey});
+        my $respMeta = $json->decode( $client->responseContent() );
+    
+        unless (check_auth($respMeta)) {
+            $tokenKey = get_token();
+            next;
+        }
+        
+        return $respMeta;
+    }
+}
+
+# aim: fetch img binary data from server
+# params: id
+# return: scalar
+sub fetch_img_binary {
+    my $picpath = shift;
+    
+    $picpath =~ s/http:\/\/.+?\///;
+    
+    # fecth image binary
+    $client->GET( $picpath, { 'Content-type' => 'image'});
+    
+    return $client->responseContent();
 }
 
 # aim: check if response is authorized
@@ -203,7 +263,7 @@ sub cacher_log {
     my $msg = shift;
     
     my $datestr = strftime("%a %b %e %H:%M:%S %Y", gmtime);
-    print $datestr. ' : ' . $msg . "\n";
+    print $datestr. ': ' . $msg . "\n";
 }
 
 1;
