@@ -17,7 +17,7 @@ use Data::Dumper;
 my $API_KEY = '23567b218376f79d9415';
 
 my $CACHE_PATH = '/tmp/cache';
-my $CACHE_TERM = '5 minutes';
+my $CACHE_TERM = '5 seconds';
 
 # Initializing objects
 my $client = REST::Client->new();
@@ -42,39 +42,16 @@ my $tokenKey = get_token();
 get '/images/:id/' => sub {
     my $id = route_parameters->{'id'};
     
-    if ( !$cacheImg->get_object( $id) || $cacheImg->exists_and_is_expired( $id)) {
+    if ( ! $cacheImg->get_object( $id) || $cacheImg->exists_and_is_expired( $id)) {
         cacher_log( $id . ' not found or cache is expired');
-        
-        if ( $cacheImg->get('__updating')) {
-            cacher_log( '...cache already updating');
+        cacher_log( $id . ' fetching from server');
+        my $imgData = fetch_and_cache_img( $id);
 
-            my $imgData = fetch_img( $id);
-            # status => 'not found' is caching as well
-            $cacheImg->set( $id, $imgData, $CACHE_TERM);
-            
-            return $json->encode( $imgData->{meta});
-        }
-        
-        # Forking to not wait cache update
-        my $child = fork();
-        die "Failed to fork: $!" unless defined $child;
-        
-        # Fetch image directly from server
-        unless ( $child) {
-            cacher_log( 'fork to complete request');
-            cacher_log( $id . ' fetched from server');
-            
-            my $imgData = fetch_img( $id);
-            # status => 'not found' is caching as well
-            $cacheImg->set( $id, $imgData, $CACHE_TERM);
-            return $json->encode( $imgData->{meta});
-        }
-
-        # Updating cache
-        return loadData2Cache();
+        # meta could be status => 'not found'
+        return $json->encode( $imgData->{meta});
     }
     
-    cacher_log( $id . ' exists in cache and not expired');
+    cacher_log( $id . ' exists in a cache and not expired');
     return $json->encode( $cacheImg->get($id)->{meta});
 };
  
@@ -83,21 +60,22 @@ get '/search/:attr/:val/' => sub {
     my $val = route_parameters->{'val'};
 
     if ( $cacheImg->exists_and_is_expired('META')) {
+        cacher_log('Meta search cache is expired');
         while( !loadData2Cache()) {
-            sleep 3;
+            sleep 1;
         }
     }
     
     my $metaRef = $cacheImg->get('META');
     my @res;
-    foreach my $id (keys %$metaRef) {
-        unless ( defined $metaRef->{$id}->{$attr}) {
+    foreach my $meta (@$metaRef) {
+        unless ( defined $meta->{$attr}) {
             return "Unknown meta field $attr";
         }
         
         # non case-sensitive comparison 
-        if (lc $metaRef->{$id}->{$attr} eq lc $val ) {
-            push @res, $metaRef->{$id}; 
+        if (lc $meta->{$attr} eq lc $val ) {
+            push @res, $meta; 
         }
     }
 
@@ -122,7 +100,7 @@ start;
 # 0 cache updating by another process
 sub loadData2Cache {
     my $respImg;
-    my @metaDataArr;
+    my @metaData;
     
     # already updating
     if ($cacheImg->get('__updating')) {
@@ -152,13 +130,17 @@ sub loadData2Cache {
         }
 
         foreach my $pic (@{ $respImg->{pictures}}) {
-            my $imgData = {
-                meta   => fetch_img_meta( $pic->{id}),
-                binary => fetch_img_binary( $pic->{cropped_picture}),
-            };
-            $cacheImg->set( $pic->{id}, $imgData, $CACHE_TERM );
+            my $imgData; 
+            my $id = $pic->{id};
 
-            push @metaDataArr, $imgData->{meta};
+            if ( ! $cacheImg->get_object($id) || $cacheImg->exists_and_is_expired($id)) {
+                $imgData = fetch_and_cache_img( $pic->{id});
+            }
+            else {
+                $imgData = $cacheImg->get($id);
+            }
+            
+            push @metaData, $imgData->{meta};
         }
 
         $page++;
@@ -166,24 +148,24 @@ sub loadData2Cache {
     }
     
     # put meta data to cash
-    my %metaDataHash = map { $_->{id} => $_ } @metaDataArr;
-    $cacheImg->set( 'META', \%metaDataHash, $CACHE_TERM );
+    $cacheImg->set( 'META', \@metaData, $CACHE_TERM );
 
     # unset flag
     $cacheImg->set('__updating', 0);
 
-    cacher_log( scalar @metaDataArr. ' images cached...');
+    cacher_log( scalar @metaData. ' images cached...');
 
     return 1;
 }
 
-# aim: fetch img data from server
+# aim: fetch img data from server and cache it
+# it not found returning {status => 'not found'}
 # params: id
 # return: ref to hash {
 #   meta   => ,
 #   binary => ,
 # }
-sub fetch_img {
+sub fetch_and_cache_img {
     my $id = shift;
 
     my $imgData = {
@@ -195,6 +177,11 @@ sub fetch_img {
     }
     else {
         cacher_log( $id . ' image not found');
+    }
+    
+    # cache if img exists
+    if ( $imgData->{meta}->{id}) {
+        $cacheImg->set( $id, $imgData, $CACHE_TERM);
     }
     
     return $imgData;
