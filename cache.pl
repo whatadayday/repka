@@ -17,7 +17,7 @@ use Data::Dumper;
 my $API_KEY = '23567b218376f79d9415';
 
 my $CACHE_PATH = '/tmp/cache';
-my $CACHE_TERM = '5 seconds';
+my $CACHE_TERM = '5 minutes';
 
 # Initializing objects
 my $client = REST::Client->new();
@@ -138,7 +138,7 @@ sub loadData2Cache {
     my $page = 0;
     my $has_more = 1;
 
-    while ($has_more && $page < 4) {
+    while ($has_more) {
         $client->GET("/images?page=$page", {Authorization => 'Bearer '. $tokenKey});
         $respImg = $json->decode( $client->responseContent() );
 
