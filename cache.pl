@@ -17,7 +17,7 @@ use Data::Dumper;
 my $API_KEY = '23567b218376f79d9415';
 
 my $CACHE_PATH = '/tmp/cache';
-my $CACHE_TERM = '5 seconds';
+my $CACHE_TERM = '5 minutes';
 
 # Initializing objects
 my $client = REST::Client->new();
@@ -61,7 +61,7 @@ get '/search/:attr/:val/' => sub {
 
     if ( $cacheImg->exists_and_is_expired('META')) {
         cacher_log('Meta search cache is expired');
-        while( !loadData2Cache()) {
+        while( $cacheImg->exists_and_is_expired('META') && !loadData2Cache()) {
             sleep 1;
         }
     }
