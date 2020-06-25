@@ -43,8 +43,6 @@ get '/images/:id/' => sub {
     my $id = route_parameters->{'id'};
     
     if ( !$cacheImg->get_object( $id) || $cacheImg->exists_and_is_expired( $id)) {
-    #if ( !$cacheImg->get('META') || $cacheImg->exists_and_is_expired( $id)) {
-
         cacher_log( $id . ' not found or cache is expired');
         
         if ( $cacheImg->get('__updating')) {
